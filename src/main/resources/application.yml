@@ -1,0 +1,42 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /sales
+
+app-context-path: /v1
+
+
+## Actuator's endpoints
+management:
+  endpoint:
+    health:
+      show-details: always
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+
+## I18N
+i18n:
+  locale:
+    supported: en,es
+    default-value: en
+  basename: i18n/messages
+
+logging.level.root: INFO
+
+## config h2
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: true
+    hibernate:
+      ddl-auto: none
+  h2:
+    console:
+      enabled: true

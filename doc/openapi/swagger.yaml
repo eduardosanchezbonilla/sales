@@ -1,0 +1,106 @@
+openapi: 3.0.0
+servers:
+    - description: Especificación Sales Api
+      url: 'http://localhost:8080/sales/v1'
+info:
+    description: Sales Api
+    version: "v1"
+    title: Sales Api
+    contact:
+        name: 'API Support'
+tags:
+    - name: services
+      description: 'Operaciones de servicios'
+
+paths:
+
+    '/price':
+        get:
+            summary: Sales
+            description: Servicio de consulta que a partir de fecha aplicación, producto y cadena, devuelve el precio aplicable.
+            operationId: price
+
+            parameters:
+                - in: query
+                  name: applicationDate
+                  schema:
+                      type: string
+                  required: true
+                  description: Fecha de aplicación con formato ISO (yyyy-MM-ddTHH:mm:ss)
+
+                - in: query
+                  name: productId
+                  schema:
+                      type: number
+                  required: true
+                  description: Identificador del producto
+
+                - in: query
+                  name: brandId
+                  schema:
+                      type: number
+                  required: true
+                  description: Identificador de cadena
+
+            responses:
+                '200':
+                    description: successful operation
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PriceResponseRsType'
+                '204':
+                    $ref: '#/components/responses/204'
+                '400':
+                    $ref: '#/components/responses/400'
+                '5XX':
+                    $ref: '#/components/responses/5XX'
+
+
+components:
+
+    responses:
+        204:
+            description: 'No existen resultados para los datos introducidos'
+        400:
+            description: 'Bad request.'
+            content:
+                application/json:
+                    schema:
+                        $ref: '#/components/schemas/ErrorMessageType'
+        5XX:
+            description: Unexpected error.
+
+
+    schemas:
+
+        ErrorMessageType:
+            type: object
+            required:
+                - errors
+            properties:
+                errors:
+                    type: string
+
+
+        PriceResponseRsType:
+            type: object
+            properties:
+                productId:
+                    type: number
+                brandId:
+                    type: number
+                priceId:
+                    type: number
+                startDate:
+                    type: string
+                endDate:
+                    type: string
+            example:
+                productId: 35455
+                brandId: 1
+                priceId: 4
+                startDate: '2020-06-15T16:00:00'
+                endDate: '2020-12-31T23:59:59'
+                price: 38.95
+

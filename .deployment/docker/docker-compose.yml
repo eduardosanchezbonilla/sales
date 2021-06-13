@@ -1,0 +1,19 @@
+version: '3.7'
+services:
+    app:
+        build:
+            dockerfile: .deployment/docker/tomcat/Dockerfile
+            target: development
+            context: ../../
+            args:
+                TIMEZONE: ${TIMEZONE}
+        container_name: app_sales
+        expose:
+            - 5005
+        ports:
+            - 8080:8080
+            - 5004:5004
+        volumes:
+            - ../../target/sales.war:/app.war
+        env_file:
+            - ../../.env

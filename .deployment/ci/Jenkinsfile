@@ -1,0 +1,125 @@
+pipeline {
+    agent any
+    tools {
+        maven 'maven-3.6.3'
+    }
+    environment {
+        PROJECT_NAME = 'sales'
+        SONAR_NAME = 'sales-${BRANCH_NAME}'
+        SONAR_KEY = 'sales-${BRANCH_NAME}'
+        OPENSHIFT_API = "https://urlApiOpenshift/apis/build.openshift.io/v1/namespaces"
+        MAVEN_PARAMS = "-B -s mavenSettings.xml"
+    }
+    stages {
+        stage('Build') {
+            steps {
+                echo 'Building...'
+                sh 'mvn -f pom.xml clean package -DskipTests ${MAVEN_PARAMS}'
+            }
+        }
+        stage("SonarQube analysis") {
+            when {
+                expression {
+                    return env.BRANCH_NAME != 'master'
+                }
+            }
+            steps {
+                withSonarQubeEnv('Sonar') {
+                    sh 'mvn test sonar:sonar -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_AUTH_TOKEN} -Dsonar.projectName=${SONAR_NAME} -Dsonar.projectKey=${SONAR_KEY}'
+                }
+            }
+        }
+        stage("Quality Gate") {
+            when {
+                expression {
+                    return env.BRANCH_NAME != 'master'
+                }
+            }
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    // Parameter indicates whether to set pipeline to UNSTABLE if Quality Gate fails
+                    // true = set pipeline to UNSTABLE, false = don't
+                    // Requires SonarQube Scanner for Jenkins 2.7+
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+        stage('unit tests') {
+            when {
+                expression {
+                    return env.BRANCH_NAME != 'master'
+                }
+            }
+            steps {
+                echo 'Unit Testing..'
+                sh 'mvn test'
+            }
+        }
+        stage('OpenShift Build & Deploy DEV') {
+            when {
+                expression {
+                    return env.BRANCH_NAME == 'develop'
+                }
+            }
+            steps {
+                script {
+                    echo "OpenShift Build & Deploy"
+                    withCredentials([[$class: 'StringBinding', credentialsId: '	Openshift_ServiceAccount_Dev', variable: 'BEARER']]) {
+                        def apiUrl = "${OPENSHIFT_API}/sales-dev/buildconfigs/${PROJECT_NAME}/instantiate"
+                        def headers = "-H \"Authorization: Bearer ${BEARER}\" -H \"Accept: application/json\" -H \"Content-Type: application/json\""
+                        def curlRQ = """
+                                curl -k -v -w "%{http_code}" -X POST \
+                                -d '{"kind":"BuildRequest","apiVersion":"build.openshift.io/v1","metadata":{"name":"${PROJECT_NAME}"}}' \
+                                ${headers} ${apiUrl}"""
+
+                        def response = sh(returnStdout: true, script: "${curlRQ}").trim()
+                        def httpCode = response.substring(response.lastIndexOf("}") + 1)
+                        if (httpCode != "200" && httpCode != "201") {
+                            skipRemainingStages = true
+                            error "This pipeline stops here! ${response.substring(0, response.lastIndexOf('}')+1)}"
+                        }
+                    }
+                }
+            }
+        }
+        stage('OpenShift Build & Deploy PROD') {
+            when {
+                expression {
+                    return env.BRANCH_NAME == 'master'
+                }
+            }
+            steps {
+                script {
+                    echo "OpenShift Build & Deploy"
+                    withCredentials([[$class: 'StringBinding', credentialsId: '	Openshift_ServiceAccount_Prod', variable: 'BEARER']]) {
+                        def apiUrl = "${OPENSHIFT_API}/sales-prod/buildconfigs/${PROJECT_NAME}/instantiate"
+                        def headers = "-H \"Authorization: Bearer ${BEARER}\" -H \"Accept: application/json\" -H \"Content-Type: application/json\""
+                        def curlRQ = """
+                                curl -k -v -w "%{http_code}" -X POST \
+                                -d '{"kind":"BuildRequest","apiVersion":"build.openshift.io/v1","metadata":{"name":"${PROJECT_NAME}"}}' \
+                                ${headers} ${apiUrl}"""
+
+                        def response = sh(returnStdout: true, script: "${curlRQ}").trim()
+                        def httpCode = response.substring(response.lastIndexOf("}") + 1)
+                        if (httpCode != "200" && httpCode != "201") {
+                            skipRemainingStages = true
+                            error "This pipeline stops here! ${response.substring(0, response.lastIndexOf('}')+1)}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            cleanWs()
+        }
+        failure {
+            echo 'I will send email to developers'
+
+            emailext body: "${currentBuild.currentResult}: Job ${env.JOB_NAME} build ${env.BUILD_NUMBER}\n More info at: ${env.BUILD_URL}",
+                    recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']],
+                    subject: "Jenkins Build ${currentBuild.currentResult}: Job ${env.JOB_NAME}"
+        }
+    }
+}
